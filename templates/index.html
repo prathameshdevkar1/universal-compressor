@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Compressor</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
+        }
+        .container {
+            background: white; padding: 40px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;
+            width: 90%; max-width: 500px;
+        }
+        h1 { margin-top: 0; color: #2c3e50; }
+        .upload-zone {
+            border: 2px dashed #3498db; border-radius: 8px; padding: 40px 20px;
+            background-color: #f0f8ff; cursor: pointer; margin-bottom: 20px;
+        }
+        input[type="file"] { display: none; }
+        
+        /* NEW: Styles for the slider controls */
+        .controls {
+            margin-bottom: 20px; text-align: left;
+            display: none; /* Hidden until file is selected */
+        }
+        .controls label { font-weight: bold; font-size: 14px; }
+        input[type="range"] { width: 100%; margin-top: 10px; cursor: pointer; }
+        
+        button {
+            background-color: #3498db; color: white; border: none; padding: 12px 24px;
+            font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%;
+        }
+        button:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+        #status { margin-top: 15px; font-size: 14px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Compress File</h1>
+    <p>Upload a PDF, JPG, or PNG.</p>
+    
+    <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+        <p id="fileName">Click here to select a file</p>
+    </div>
+    
+    <input type="file" id="fileInput" accept=".pdf, .jpg, .jpeg, .png" onchange="updateUI()">
+    <div class="controls" id="compressionControls">
+        <label for="targetSize">Target Size:</label>
+        <div style="display: flex; gap: 10px; margin-top: 5px; margin-bottom: 15px;">
+            <input type="number" id="targetSize" placeholder="Enter size" style="padding: 8px; width: 60%;" value="500">
+            <select id="unit" style="padding: 8px; width: 30%;">
+                <option value="1">KB</option>
+                <option value="1024">MB</option>
+            </select>
+        </div>
+        
+        <label for="maxUploadLimit">Dynamic Upload Limit (MB):</label>
+        <div style="margin-top: 5px;">
+            <input type="number" id="maxUploadLimit" value="16" style="padding: 8px; width: 100%;">
+            <small style="color: #7f8c8d;">Increase this if you are uploading massive files.</small>
+        </div>
+    </div>
+    
+    <button id="compressBtn" onclick="compressFile()" disabled>COMPRESS</button>
+    
+    
+   
+    <div id="status"></div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileName');
+    const compressBtn = document.getElementById('compressBtn');
+    const statusText = document.getElementById('status');
+    const compressionControls = document.getElementById('compressionControls');
+    const qualitySlider = document.getElementById('qualitySlider');
+    const qualityOutput = document.getElementById('qualityOutput');
+
+    function updateSliderValue() {
+        qualityOutput.textContent = qualitySlider.value;
+    }
+
+    function updateUI() {
+        if (fileInput.files.length > 0) {
+            fileNameDisplay.textContent = fileInput.files[0].name;
+            compressBtn.disabled = false;
+            compressionControls.style.display = "block"; // Show the slider!
+            statusText.textContent = "";
+        } else {
+            fileNameDisplay.textContent = "Click here to select a file";
+            compressBtn.disabled = true;
+            compressionControls.style.display = "none";
+        }
+    }
+
+    async function compressFile() {
+        if (fileInput.files.length === 0) return;
+
+        const file = fileInput.files[0];
+        const sizeValue = document.getElementById('targetSize').value;
+        const unitValue = document.getElementById('unit').value;
+        const maxLimitValue = document.getElementById('maxUploadLimit').value;
+        
+        const totalTargetKB = sizeValue * unitValue; 
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("target_size", totalTargetKB); 
+        formData.append("max_upload_limit", maxLimitValue); // Sends dynamic limit to backend
+
+        compressBtn.disabled = true;
+        compressBtn.textContent = "Processing...";
+        statusText.textContent = "";
+
+        try {
+            const response = await fetch('/compress', { method: 'POST', body: formData });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                
+                // Get filename from header if possible, or fallback
+                let filename = "compressed_" + file.name;
+                const disposition = response.headers.get('Content-Disposition');
+                if (disposition && disposition.indexOf('filename=') !== -1) {
+                    filename = disposition.split('filename=')[1].replace(/"/g, '');
+                }
+                
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                statusText.style.color = "#2ecc71";
+                statusText.textContent = "Success! File downloaded.";
+            } else {
+                // Read the exact error description sent by the Python handle_error function
+                const errorText = await response.text();
+                statusText.style.color = "#e74c3c";
+                statusText.textContent = errorText;
+            }
+        } catch (error) {
+            statusText.style.color = "#e74c3c";
+            statusText.textContent = "Network error occurred.";
+        } finally {
+            compressBtn.disabled = false;
+            compressBtn.textContent = "COMPRESS";
+        }
+    }
+</script>
+
+</body>
+</html>
+
